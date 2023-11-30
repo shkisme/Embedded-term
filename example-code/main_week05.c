@@ -58,7 +58,7 @@ void delay() {
 
 int main(void)
 {
-  *RCC_APB2 |= RCC_APB2_ABCD_EN; // Clock Enable (Port B, C, D)
+*RCC_APB2 |= RCC_APB2_ABCD_EN; // Clock Enable (Port B, C, D)
 
 *GPIO_B_CRH &= ~0x00000F00; // B Port Reset Before Setting
 *GPIO_B_CRH |=  0x00000800;  // Use Pin 10
