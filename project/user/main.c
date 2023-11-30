@@ -42,8 +42,8 @@ void RCC_Configure(void)
     RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2, ENABLE);
     
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC,ENABLE); //  ????��? ???? 1 : PC2
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1,ENABLE); // ADC1 ENABLE
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC,ENABLE); // 아날로그 센서 1 : PC2
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1,ENABLE);  // ADC1 ENABLE
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO, ENABLE);
 
     RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2,ENABLE); // TIMER2 Enable
@@ -60,8 +60,8 @@ void GPIO_Configure(void)
 	GPIO_Init(GPIOB, &GPIO_InitStructure);
 
     // ADC_1 Part
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2;   // ????��? ???? 1 : PC2
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN; // PC2 -> ????��? IN ???
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2;   // 아날로그 센서 1 : PC2
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN; // PC2 ->  ADC (Input)
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz; 
     GPIO_Init(GPIOC, &GPIO_InitStructure);
 
@@ -72,9 +72,9 @@ void GPIO_Configure(void)
     GPIO_Init(GPIOC, &GPIO_InitStructure);
 
      // Motor Part
-     // ????? ???? ?????? Pin?? ??? ???? ??��? LED1?? ???????
-     // ????? ?????????? ?????????? ??????.
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2; // Enable Motor : PD2(2???? ?? ?? ????)
+     // 릴레이 모듈 등 여러가지를 연결하려면 번거롭기 때문에 불가피하게 LED의 전원 상태로
+     // 전원이 정상적으로 인가되었는지 확인
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2; // Enable Motor : PD2(나중에 OR을 통해 2개까지 조작 가능)
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
 	GPIO_Init(GPIOD, &GPIO_InitStructure);
@@ -136,7 +136,7 @@ void TIM_Configure(void) {
     
 }
 
-void Servo_Change(uint16_t per) { // ???????? ???? ????
+void Servo_Change(uint16_t per) { // 서보 모터의 각도를 변환하는 함수
   
 	int pwm_pulse = per;
 	TIM_OCInitTypeDef TIM_OCInitStructure;
@@ -152,7 +152,7 @@ void Servo_Change(uint16_t per) { // ???????? ???? ????
 
 void EXTI_Configure(void)
 {
-    // Interrupt ????? ?????? ??? ??(???1)?? ???? EXTI Controller Setting
+    // Interrupt 신호를 보내는 입력 핀(버튼 1)에 대해 EXTI Controller Setting
     EXTI_InitTypeDef EXTI_InitStructure;
 
    // TODO: Select the GPIO pin (button) used as EXTI Line using function 'GPIO_EXTILineConfig'
@@ -236,7 +236,7 @@ void USART2_IRQHandler() {
         word = USART_ReceiveData(USART2);
 
         // TODO implement*********************
-        //LCD ?? received message text?? ???
+        //LCD에 received message text를 띄움
         LCD_ShowChar(80, 160, word, 20, BLACK, WHITE);
 
         // clear 'Read data register not empty' flag
@@ -248,7 +248,7 @@ void EXTI4_IRQHandler(void){
     if(EXTI_GetITStatus(EXTI_Line4) != RESET) { // KEY1
         if(GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4) == Bit_RESET) {
 
-            //????? ?????????? ???? ?????????? ???.
+            //모터가 켜져있는 상태에서는 꺼지고 꺼져있는 상태에서는 꺼짐
             if(isspin){ // on -> off
                 GPIO_SetBits(GPIOD,GPIO_Pin_2);   // LED1 Off
                 LCD_ShowString(80, 100, "OFF", BLACK, WHITE);
@@ -266,7 +266,7 @@ void EXTI4_IRQHandler(void){
 
 void ADC_Configure(void) {
 	
-    ADC_InitTypeDef ADC_12; // ADC12 ??? -> PC2
+    ADC_InitTypeDef ADC_12; // ADC12 채널 -> PC2
 	
 	ADC_12.ADC_ContinuousConvMode = ENABLE; // ???? ??? ??????? ContinuousConv ????
     ADC_12.ADC_DataAlign = ADC_DataAlign_Right; // Right ???? ??? ?��??? ????
@@ -285,7 +285,7 @@ void ADC_Configure(void) {
     while(ADC_GetCalibrationStatus(ADC1));
     ADC_SoftwareStartConvCmd(ADC1, ENABLE);
 
-    //ADC multi channel ??? ??? ??????***********************
+    //ADC multi channel로 여러 센서의 값을 받아오는 법 알아보기***********************
 }
 
 void ADC1_2_IRQHandler(void) {
