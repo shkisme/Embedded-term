@@ -7,16 +7,15 @@
 #include "stm32f10x_usart.h"
 #include "stm32f10x_rcc.h"
 #include "stm32f10x_adc.h"
-//#include "stm32f10x_tim.h"
+#include "stm32f10x_tim.h"
 #include "lcd.h"
 #include "touch.h"
-
 
 /* function prototype */
 void RCC_Configure(void);
 void GPIO_Configure(void);
 void TIM_Configure(void);
-//void Servo_Change(uint16_t per);
+void Servo_Change(uint16_t per);
 void EXTI_Configure(void);
 void USART2_Init(void);
 void NVIC_Configure(void);
@@ -27,15 +26,24 @@ void ADC_Configure(void);
 void ADC1_2_IRQHandler(void);
 void TIM2_IRQHandler(void);
 
+/*-------------Timer Status---------------*/
+#define NO_TIMER 0
+#define ONE_MINUTES_30_SEC 90
+#define THREE_MINUTES 180
 
 uint16_t value, x, y, time_count;
-int isspin, led;
+int isSpin, isstart, led;
 int color[12] = {WHITE, CYAN, BLUE, RED, MAGENTA, LGRAY, GREEN, YELLOW, BROWN, BRRED, GRAY};
+int timer_status = NO_TIMER; // TODO: 온도차 판단 결과에 따라 10도 초과일 경우 ONE_MINUTES_30_SEC, 10도 이하일 경우 THREE_MINUTES로 설정
+// timer 초기화 시 NO_TIMER로 상태 재설정
+int current_time = 0;
+int isOpen = 0; // 창문 및 환풍기 가동 flag
+float temp_value;
 
 // Servo Motor variable
 uint16_t curDeg = 700, minDeg = 700, maxDeg = 2600;
-//---------------------------------------------------------------------------------------------------
 
+/*-------------Configure---------------*/
 void RCC_Configure(void)
 {
     // USART2 : PA2, PA3
@@ -46,6 +54,7 @@ void RCC_Configure(void)
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC,ENABLE); // 아날로그 센서 1 : PC2
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOD, ENABLE);
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1,ENABLE);  // ADC1 ENABLE
+    // RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC2,ENABLE);  // ADC2 ENABLE
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO, ENABLE);
 
     RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2,ENABLE); // TIMER2 Enable
@@ -66,6 +75,11 @@ void GPIO_Configure(void)
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN; // PC2 ->  ADC (Input)
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz; 
     GPIO_Init(GPIOC, &GPIO_InitStructure);
+
+    // ADC_2 Part
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_13;     // 아날로그 센서 2 : PB13
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN; // PB13 ->  ADC2 (Input)
+    GPIO_Init(GPIOB, &GPIO_InitStructure);
 
     // (Temp) Button
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_4;  // KEY1 (PC4) - Digital Input
@@ -193,31 +207,31 @@ void NVIC_Configure(void) {
     NVIC_InitTypeDef NVIC_InitStructure;
     NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2);
 
+    // Button S1(PC4)
+    NVIC_InitStructure.NVIC_IRQChannel = EXTI4_IRQn;
+    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
+    NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+    NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+    NVIC_Init(&NVIC_InitStructure);
+    
     // Timer 2
     NVIC_InitStructure.NVIC_IRQChannel = TIM2_IRQn;
 	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
-	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 2;
-	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 2;
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;
 	NVIC_Init(&NVIC_InitStructure);
 
     // Timer 3
 	NVIC_InitStructure.NVIC_IRQChannel = TIM3_IRQn;
 	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
-	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 2;
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
 	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 2;
 	NVIC_Init(&NVIC_InitStructure);
-
-    // Button S1(PC4)
-    NVIC_InitStructure.NVIC_IRQChannel = EXTI4_IRQn;
-    NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
-    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
-    NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
-    NVIC_Init(&NVIC_InitStructure);
 
     //ADC part
     NVIC_InitStructure.NVIC_IRQChannel = ADC1_2_IRQn;
     NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
-    NVIC_InitStructure.NVIC_IRQChannelSubPriority = 2;
+    NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;
     NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 2;
     NVIC_Init(&NVIC_InitStructure);
 
@@ -225,44 +239,10 @@ void NVIC_Configure(void) {
     // 'NVIC_EnableIRQ' is only required for USART setting
     NVIC_EnableIRQ(USART2_IRQn);
     NVIC_InitStructure.NVIC_IRQChannel = USART2_IRQn;
-    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 2; // TODO
-    NVIC_InitStructure.NVIC_IRQChannelSubPriority = 2; // TODO
+    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 3; // TODO
+    NVIC_InitStructure.NVIC_IRQChannelSubPriority = 3; // TODO
     NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
     NVIC_Init(&NVIC_InitStructure);
-}
-
-// start of Handler
-/////////////////////////////////////////////////////
-
-void USART2_IRQHandler() {
-    uint16_t word;
-    if(USART_GetITStatus(USART2,USART_IT_RXNE)!=RESET){
-        // the most recent received data by the USART2 peripheral
-        word = USART_ReceiveData(USART2);
-        if(word == 'a'){
-          // TODO implement*********************
-          //LCD에 received message text를 띄움
-          LCD_ShowChar(80, 160, ' ', 20, BLACK, WHITE);
-          LCD_ShowString(80, 160, "start", BLACK, WHITE);
-        }
-        // clear 'Read data register not empty' flag
-    	USART_ClearITPendingBit(USART2,USART_IT_RXNE);
-    }
-}
-
-void EXTI4_IRQHandler(void){ /////////w35879083759279047204723907420
-    if(EXTI_GetITStatus(EXTI_Line4) != RESET) { // KEY1
-      
-        if(GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4) == Bit_RESET) {
-            //모터가 켜져있는 상태에서는 꺼지고 꺼져있는 상태에서는 꺼짐
-          if(isspin == 1){
-            isspin = 0;
-          } else {
-            isspin = 1;
-          }
-        }
-        EXTI_ClearITPendingBit(EXTI_Line4);
-    }
 }
 
 void ADC_Configure(void){
@@ -289,90 +269,137 @@ void ADC_Configure(void){
     //ADC multi channel로 여러 센서의 값을 받아오는 법 알아보기***********************
 }
 
+/*-------------Handler---------------*/
+
+void USART2_IRQHandler() { // 폰에서 값 받아옴
+    uint16_t word;
+    if(USART_GetITStatus(USART2,USART_IT_RXNE) != RESET){
+        // the most recent received data by the USART2 peripheral
+        word = USART_ReceiveData(USART2);
+        if(word == 'a'){ // 자동 환기 시스템 작동 시작
+          // TODO implement*********************
+          // LCD에 received message text를 띄움
+          LCD_ShowChar(80, 160, ' ', 20, BLACK, WHITE);
+          LCD_ShowString(80, 160, "start", BLACK, WHITE);
+        }
+        else if (word == 'b'){ // isOpen 상태 전송
+            USART_SendData(USART2, "환기 상태 : " + isOpen);
+        }
+        else if (word == 'c'){ // 연기 농도 값 전송
+            USART_SendData(USART2, "연기 농도 : " + value);
+        }
+        else if (word == 'd'){ // 수동 환기(창문 개방) 시
+            if (isOpen == 0){ // 닫혀있을때
+                isOpen = 1;
+                timer_status = NO_TIMER; // 타이머 초기화
+                current_time = 0;        // 타이머 초기화
+                // TODO: 온도차 판단 함수 호출
+            }
+        }
+        else if (word == 'e'){ // 수동 환기(창문 개방) 멈춤
+            if (isOpen == 1){ // 열려있을때
+                isOpen = 0;
+                timer_status = NO_TIMER; // 타이머 초기화
+                current_time = 0;        // 타이머 초기화
+                // TODO: 서보모터, DC 모터 중지 함수 호출
+            }
+        }
+        // clear 'Read data register not empty' flag
+    	USART_ClearITPendingBit(USART2,USART_IT_RXNE);
+    }
+    //USART_ClearITPendingBit(USART2,USART_IT_RXNE); // Q. 이건 왜한거죠? 실험 때 복붙하다가 잘못 넣었나봐여 
+}
+
+void EXTI4_IRQHandler(void){
+    if(EXTI_GetITStatus(EXTI_Line4) != RESET) { // KEY1
+      
+        if(GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4) == Bit_RESET) {
+            //모터가 켜져있는 상태에서는 꺼지고 꺼져있는 상태에서는 꺼짐
+          if(isSpin == 1){
+            isSpin = 0;
+        } else isSpin = 1;
+        }
+        EXTI_ClearITPendingBit(EXTI_Line4);
+    }
+}
+
 void ADC1_2_IRQHandler(void) {
-	
+// 디버깅으로 할 때는 정상적으로 동작하는데 
+  //디버깅 없이 할 때는 LCD가 동작하지 않음
+  //대체 뭐가 문제임
   if(ADC_GetITStatus(ADC1,ADC_IT_EOC) != RESET) { // ?�� ???? ??
 	  
     value = (int)ADC_GetConversionValue(ADC1); // ADC1?? ???? ???? value?? ???
-    
+    temp_value = (float)(3300 * value / 4096) / 10.0; // temperature...
   }
   ADC_ClearITPendingBit(ADC1, ADC_IT_EOC);
   
 }
 
-void TIM2_IRQHandler() {
-	if(TIM_GetITStatus(TIM2,TIM_IT_Update) != RESET) { // ?�� ???? ??
-		
-                if(led == 0) {
-                            GPIO_ResetBits(GPIOD,GPIO_Pin_3); // LED2 On
-                            led = 1;
-                } else {
-                            GPIO_SetBits(GPIOD,GPIO_Pin_3);   // LED2 Off
-                            led = 0;
-                    }
-          
-		if(isspin) { // DC ????? ??????????
-                        Servo_Change((uint16_t)curDeg);
-			curDeg += 100;
-			if (curDeg > maxDeg) {
-				curDeg = minDeg;
-			}
-		}
-                time_count++;
-                    if(time_count % 10 == 0) {
-			time_count = 0;
-		    }
+void TIM2_IRQHandler() { // 1초에 한번씩 수행
+	if(TIM_GetITStatus(TIM2,TIM_IT_Update) != RESET) {
+        if (timer_status != NO_TIMER){
+            current_time++;
+        }
+		if (timer_status == ONE_MINUTES_30_SEC){ // 1분 30초 경과시 timeout
+            if (current_time >= ONE_MINUTES_30_SEC){
+                timer_status = NO_TIMER;
+                current_time = 0;
+                isOpen = 0;
+            }
+        }
+        else if (timer_status = THREE_MINUTES){ // 3분 경과시 timeout
+            if (current_time >= THREE_MINUTES){
+                timer_status = NO_TIMER;
+                current_time = 0;
+                isOpen = 0;
+            }
+        }
 		TIM_ClearITPendingBit(TIM2, TIM_IT_Update);
 	}
 }
 
-/////////////////////////////////////////////////////
-//end of Handler
-
-int main(void)
+/*-------------main---------------*/
+ int main(void)
 {
-
     SystemInit();
     RCC_Configure();
     GPIO_Configure();
+    TIM_Configure();
+    EXTI_Configure();
     USART2_Init();
     ADC_Configure();
     NVIC_Configure();
-    GPIO_SetBits(GPIOD,GPIO_Pin_7); 
+    
     GPIO_SetBits(GPIOD,GPIO_Pin_2); 
     GPIO_SetBits(GPIOD,GPIO_Pin_3); 
+    GPIO_SetBits(GPIOD,GPIO_Pin_7); 
     // --------------LCD Part----------------
     LCD_Init();
     Touch_Configuration();
-    Touch_Adjust();
+    //Touch_Adjust();
     LCD_Clear(WHITE);
 
     LCD_ShowString(80,80,"THUR_Team01",BLACK,WHITE); // ?? ??? ???
-    
+
+    while(isstart != 1){
+    }
     
     while (1) {
-      Touch_GetXY(&x, &y, 1); // ext?? 1?? ??????��? "??????" ????? 1???? ?????? ???
-      Convert_Pos(x, y, &x, &y); // ??? ???	
+      //Touch_GetXY(&x, &y, 1); // ext?? 1?? ??????��? "??????" ????? 1???? ?????? ???
+      //Convert_Pos(x, y, &x, &y); // ??? ???	
       
-      if(isspin == 1){ // on -> off
-                GPIO_ResetBits(GPIOD,GPIO_Pin_2);   // LED1 Off
-                LCD_ShowString(80, 100, "   ", BLACK, WHITE);
-                LCD_ShowString(80, 100, "ON", BLACK, WHITE);
+      if(isSpin == 1){ // on -> off
+        //GPIO_ResetBits(GPIOD,GPIO_Pin_2);   // LED1 Off
+        LCD_ShowString(80, 100, "   ", BLACK, WHITE);
+        LCD_ShowString(80, 100, "ON", BLACK, WHITE);
       } else{     // off -> on
-          GPIO_SetBits(GPIOD,GPIO_Pin_2); // LED1 On
-          LCD_ShowString(80, 100, "   ", BLACK, WHITE);
-          LCD_ShowString(80, 100, " OFF", BLACK, WHITE);
+        //GPIO_SetBits(GPIOD,GPIO_Pin_2); // LED1 On
+        LCD_ShowString(80, 100, "   ", BLACK, WHITE);
+        LCD_ShowString(80, 100, "OFF", BLACK, WHITE);
       }
-      LCD_ShowNum(120,200, time_count, 2, BLACK, WHITE);
-
-	if( x != 0 || y != 0 ) { // ????? ????? 0?? ????
-          LCD_DrawCircle(x, y, 3);							      // ??? ????? ?????? 3??? ?? ????
-          LCD_ShowNum(80, 120, value, 4, BLACK, WHITE); // (80, 120) ????? ???? ???? ?? ???
-          
-        }
-        
-        
-      
+      LCD_ShowNum(120,200, current_time, 2, BLACK, WHITE);
+      LCD_ShowNum(80, 120, (int)temp_value, 4, BLACK, WHITE); // (80, 120) ????? ???? ???? ?? ???
     }
     return 0;
 }
