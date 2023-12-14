@@ -46,7 +46,7 @@
         <LeaveTargetRunning>_ 0</LeaveTargetRunning>
     </JLinkDriver>
     <DebugChecksum>
-        <Checksum>2476429859</Checksum>
+        <Checksum>2028571010</Checksum>
     </DebugChecksum>
     <Exceptions>
         <StopOnUncaught>_ 0</StopOnUncaught>
@@ -56,8 +56,8 @@
         <Enabled>_ 0</Enabled>
     </CodeCoverage>
     <Disassembly>
-        <MixedMode>1</MixedMode>
         <InstrCount>0</InstrCount>
+        <MixedMode>1</MixedMode>
     </Disassembly>
     <CallStack>
         <ShowArgs>0</ShowArgs>
@@ -80,11 +80,17 @@
         <LogFile>_ ""</LogFile>
         <Category>_ 0</Category>
     </LogFile>
+    <TermIOLog>
+        <LoggingEnabled>_ 0</LoggingEnabled>
+        <LogFile>_ ""</LogFile>
+    </TermIOLog>
     <Aliases>
         <A0>_ "C:\Users\pnu1\Documents\project_test\Libraries\STM32F10x_StdPeriph_Driver_v3.5\src\stm32f10x_rcc.c" ""</A0>
-        <A1>_ "F:\ebedded\week9\project_test_w3_G1\user\main.c" ""</A1>
-        <Count>2</Count>
-        <SuppressDialog>0</SuppressDialog>
+        <A1>_ "C:\Users\pnu1\Documents\project_test_w3_G1\Libraries\STM32F10x_StdPeriph_Driver_v3.5\src\stm32f10x_gpio.c" ""</A1>
+        <A2>_ "C:\Users\pnu1\Documents\project_test_w3_G1\Libraries\STM32F10x_StdPeriph_Driver_v3.5\src\stm32f10x_rcc.c" ""</A2>
+        <A3>_ "F:\ebedded\week9\project_test_w3_G1\user\main.c" ""</A3>
+        <Count>4</Count>
+        <SuppressDialog>1</SuppressDialog>
     </Aliases>
     <DriverProfiling>
         <Enabled>0</Enabled>
@@ -99,8 +105,8 @@
     <CallStackStripe>
         <ShowTiming>1</ShowTiming>
     </CallStackStripe>
-    <TermIOLog>
-        <LoggingEnabled>_ 0</LoggingEnabled>
-        <LogFile>_ ""</LogFile>
-    </TermIOLog>
 </settings>
+[JLinkDriver]
+TraceBufferSize=0x00010000
+TraceStallIfFIFOFull=0x00000000
+TracePortSize=0x00000004

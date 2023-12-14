@@ -1,21 +1,21 @@
-"C:\Users\pnu1\Documents\project_test_w3_G1\user\main.c"
+"C:\Users\pnu1\Documents\Embedded-term\user\main.c"
 -std=c11
 -ferror-limit=0
 -fbracket-depth=512
 -I
-C:\Users\pnu1\Documents\project_test_w3_G1\libraries\CMSIS\DeviceSupport
+C:\Users\pnu1\Documents\Embedded-term\libraries\CMSIS\DeviceSupport
 -I
-C:\Users\pnu1\Documents\project_test_w3_G1\libraries\CMSIS\DeviceSupport\Startup
+C:\Users\pnu1\Documents\Embedded-term\libraries\CMSIS\DeviceSupport\Startup
 -I
-C:\Users\pnu1\Documents\project_test_w3_G1\libraries\STM32F10x_StdPeriph_Driver_v3.5\inc
+C:\Users\pnu1\Documents\Embedded-term\libraries\STM32F10x_StdPeriph_Driver_v3.5\inc
 -I
-C:\Users\pnu1\Documents\project_test_w3_G1\libraries\STM32F10x_StdPeriph_Driver_v3.5\src
+C:\Users\pnu1\Documents\Embedded-term\libraries\STM32F10x_StdPeriph_Driver_v3.5\src
 -I
-C:\Users\pnu1\Documents\project_test_w3_G1\libraries\LCD
+C:\Users\pnu1\Documents\Embedded-term\libraries\LCD
 -I
-C:\Users\pnu1\Documents\project_test_w3_G1\user
+C:\Users\pnu1\Documents\Embedded-term\user
 -I
-C:\Users\pnu1\Documents\project_test_w3_G1\user\inc
+C:\Users\pnu1\Documents\Embedded-term\user\inc
 -I
 C:\Program Files (x86)\IAR Systems\Embedded Workbench 8.0\arm\CMSIS\Core\Include
 -I
@@ -25,19 +25,19 @@ C:\Program Files (x86)\IAR Systems\Embedded Workbench 8.0\arm\inc
 -I
 C:\Program Files (x86)\IAR Systems\Embedded Workbench 8.0\arm\inc\c
 -I
-C:\Users\pnu1\Documents\project_test_w3_G1\libraries\CMSIS\DeviceSupport
+C:\Users\pnu1\Documents\Embedded-term\libraries\CMSIS\DeviceSupport
 -I
-C:\Users\pnu1\Documents\project_test_w3_G1\libraries\CMSIS\DeviceSupport\Startup
+C:\Users\pnu1\Documents\Embedded-term\libraries\CMSIS\DeviceSupport\Startup
 -I
-C:\Users\pnu1\Documents\project_test_w3_G1\libraries\STM32F10x_StdPeriph_Driver_v3.5\inc
+C:\Users\pnu1\Documents\Embedded-term\libraries\STM32F10x_StdPeriph_Driver_v3.5\inc
 -I
-C:\Users\pnu1\Documents\project_test_w3_G1\libraries\STM32F10x_StdPeriph_Driver_v3.5\src
+C:\Users\pnu1\Documents\Embedded-term\libraries\STM32F10x_StdPeriph_Driver_v3.5\src
 -I
-C:\Users\pnu1\Documents\project_test_w3_G1\libraries\LCD
+C:\Users\pnu1\Documents\Embedded-term\libraries\LCD
 -I
-C:\Users\pnu1\Documents\project_test_w3_G1\user
+C:\Users\pnu1\Documents\Embedded-term\user
 -I
-C:\Users\pnu1\Documents\project_test_w3_G1\user\inc
+C:\Users\pnu1\Documents\Embedded-term\user\inc
 -I
 C:\Program Files (x86)\IAR Systems\Embedded Workbench 8.0\arm\CMSIS\Core\Include
 -I

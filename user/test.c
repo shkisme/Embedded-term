@@ -19,29 +19,51 @@ void Servo_Change(uint16_t per);
 void EXTI_Configure(void);
 void USART2_Init(void);
 void NVIC_Configure(void);
-void TIM2_IRQHandler();
+void TIM2_IRQHandler(void);
 void USART2_IRQHandler(void);
 void EXTI4_IRQHandler(void);
 void ADC_Configure(void);
 void ADC1_2_IRQHandler(void);
 void TIM2_IRQHandler(void);
+void startVen(void);
+void stopVen(void);
+void startMotor(void);
+void stopMotor(void);
+void LED_On(void);
+void LED_Off(void);
+void resetTimer(void);
 
 /*-------------Timer Status---------------*/
 #define NO_TIMER 0
-#define ONE_MINUTES_30_SEC 90
-#define THREE_MINUTES 180
-
-uint16_t value, x, y, time_count;
-int isSpin, isstart, led;
-int color[12] = {WHITE, CYAN, BLUE, RED, MAGENTA, LGRAY, GREEN, YELLOW, BROWN, BRRED, GRAY};
-int timer_status = NO_TIMER; // TODO: 온도차 판단 결과에 따라 10도 초과일 경우 ONE_MINUTES_30_SEC, 10도 이하일 경우 THREE_MINUTES로 설정
-// timer 초기화 시 NO_TIMER로 상태 재설정
+#define TWENTY_SEC 20 // 20 sec
+int timer_status = NO_TIMER;
 int current_time = 0;
-int isOpen = 0; // 창문 및 환풍기 가동 flag
-float temp_value;
+
+int SMOKE_FLAG = 2400; // 연기 농도가 높은지 판단하는 값
+int LIGHT_FLAG = 2900; // 밝기 농도 판단
+
+uint16_t analogData_1, analogData_2, lightValue;
+int color[12] = {WHITE, CYAN, BLUE, RED, MAGENTA, LGRAY, GREEN, YELLOW, BROWN, BRRED, GRAY};
+
+// flag
+bool isSpin = false;
+bool isStart = false; // 전체 시스템 가동
+bool isOpen = false; // 창문 및 환풍기 가동
+bool isLed = false; // LED 작동
 
 // Servo Motor variable
 uint16_t curDeg = 700, minDeg = 700, maxDeg = 2600;
+
+// message
+int message_index = 0;
+char msg1[] = "System Start!\r\n";
+char msg2[] = "System End...\r\n";
+char msg3_open[] = "Window is open\r\n";
+char msg3_close[] = "Window is close\r\n";
+char msg4_smoke_good[] = "Smoke concentration good\r\n";
+char msg4_smoke_bad[] = "Smoke concentration bad. need Ventilation\r\n";
+char msg5[] = "Start Ventilation!\r\n";
+char msg6[] = "Stop Ventilation.\r\n";
 
 /*-------------Configure---------------*/
 void RCC_Configure(void)
@@ -54,7 +76,7 @@ void RCC_Configure(void)
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC,ENABLE); // 아날로그 센서 1 : PC2
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOD, ENABLE);
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1,ENABLE);  // ADC1 ENABLE
-    // RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC2,ENABLE);  // ADC2 ENABLE
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC2,ENABLE);  // ADC2 ENABLE
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO, ENABLE);
 
     RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2,ENABLE); // TIMER2 Enable
@@ -73,18 +95,12 @@ void GPIO_Configure(void)
     // ADC_1 Part
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2;     // 아날로그 센서 1 : PC2
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN; // PC2 ->  ADC (Input)
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz; 
+    //GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz; 
     GPIO_Init(GPIOC, &GPIO_InitStructure);
 
     // ADC_2 Part
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_13;     // 아날로그 센서 2 : PB13
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3;     // 아날로그 센서 2 : PC3 - channel - 13 @wlqrkrhtlvek
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN; // PB13 ->  ADC2 (Input)
-    GPIO_Init(GPIOB, &GPIO_InitStructure);
-
-    // (Temp) Button
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_4;  // KEY1 (PC4) - Digital Input
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_InitStructure.GPIO_Mode = (GPIO_Mode_IPU);
     GPIO_Init(GPIOC, &GPIO_InitStructure);
 
      // Motor Part
@@ -198,7 +214,7 @@ void USART2_Init(void) {
 	USART2_InitStructure.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;
 	USART_Init(USART2, &USART2_InitStructure); 
 	
-	// TODO: Enable the USART2 RX interrupts using the function 'USART_ITConfig' and the argument value 'Receive Data register not empty interrupt'
+	// TODO: Enable the USART2 RX interrupts using the function 'USART_ITConfig' and the argument lightValue 'Receive Data register not empty interrupt'
 	USART_ITConfig(USART2, USART_IT_RXNE, ENABLE); // Rx -> interrupt enable
 }
 
@@ -248,17 +264,18 @@ void NVIC_Configure(void) {
 void ADC_Configure(void){
 	
     ADC_InitTypeDef ADC_12; // ADC12 채널 -> PC2
-	
-	ADC_12.ADC_ContinuousConvMode = ENABLE; // ???? ??? ??????? ContinuousConv ????
-    ADC_12.ADC_DataAlign = ADC_DataAlign_Right; // Right ???? ??? ?��??? ????
+   
+    ADC_12.ADC_ContinuousConvMode = ENABLE; // ContinuousConv : 값을 계속해서 입력받음
+    ADC_12.ADC_DataAlign = ADC_DataAlign_Right; // Little Endian
     ADC_12.ADC_ExternalTrigConv = ADC_ExternalTrigConv_None;
-    ADC_12.ADC_Mode = ADC_Mode_Independent; // Independent ??? ????
-    ADC_12.ADC_NbrOfChannel = 1; // ????? ??? 1??
-    ADC_12.ADC_ScanConvMode = DISABLE; // ???? ??��? ??? ???? ??????
+    ADC_12.ADC_Mode = ADC_Mode_Independent; // Independent 
+    ADC_12.ADC_NbrOfChannel = 1; // 사용하는 channel의 개수
+    ADC_12.ADC_ScanConvMode = DISABLE; 
     
-	ADC_Init(ADC1, &ADC_12); // ????
-    ADC_RegularChannelConfig(ADC1, ADC_Channel_12, 1, ADC_SampleTime_239Cycles5);
-    ADC_ITConfig(ADC1,ADC_IT_EOC, ENABLE);
+    // ADC1 - PC2
+    ADC_Init(ADC1, &ADC_12);
+    ADC_RegularChannelConfig(ADC1, ADC_Channel_12, 1, ADC_SampleTime_239Cycles5); // 중간에 숫자를 뭘로 해야 하는지 기억이 안 남
+    ADC_ITConfig(ADC1, ADC_IT_EOC, ENABLE);
     ADC_Cmd(ADC1, ENABLE);
     ADC_ResetCalibration(ADC1);
     while(ADC_GetResetCalibrationStatus(ADC1));
@@ -266,74 +283,102 @@ void ADC_Configure(void){
     while(ADC_GetCalibrationStatus(ADC1));
     ADC_SoftwareStartConvCmd(ADC1, ENABLE);
 
+    // ADC2 - PC3
+    ADC_Init(ADC2, &ADC_12);
+    ADC_RegularChannelConfig(ADC2, ADC_Channel_13, 1, ADC_SampleTime_239Cycles5);
+    ADC_ITConfig(ADC2, ADC_IT_EOC, ENABLE);
+    ADC_Cmd(ADC2, ENABLE);
+    ADC_ResetCalibration(ADC2);
+    while(ADC_GetResetCalibrationStatus(ADC2));
+    ADC_StartCalibration(ADC2);
+    while(ADC_GetCalibrationStatus(ADC2));
+    ADC_SoftwareStartConvCmd(ADC2, ENABLE);
+
     //ADC multi channel로 여러 센서의 값을 받아오는 법 알아보기***********************
 }
 
 /*-------------Handler---------------*/
-
 void USART2_IRQHandler() { // 폰에서 값 받아옴
     uint16_t word;
     if(USART_GetITStatus(USART2,USART_IT_RXNE) != RESET){
         // the most recent received data by the USART2 peripheral
         word = USART_ReceiveData(USART2);
-        if(word == 'a'){ // 자동 환기 시스템 작동 시작
+        if(word == '1'){ // 자동 환기 시스템 작동 시작
           // TODO implement*********************
           // LCD에 received message text를 띄움
-          LCD_ShowChar(80, 160, ' ', 20, BLACK, WHITE);
-          LCD_ShowString(80, 160, "start", BLACK, WHITE);
-        }
-        else if (word == 'b'){ // isOpen 상태 전송
-            USART_SendData(USART2, "환기 상태 : " + isOpen);
-        }
-        else if (word == 'c'){ // 연기 농도 값 전송
-            USART_SendData(USART2, "연기 농도 : " + value);
-        }
-        else if (word == 'd'){ // 수동 환기(창문 개방) 시
-            if (isOpen == 0){ // 닫혀있을때
-                isOpen = 1;
-                timer_status = NO_TIMER; // 타이머 초기화
-                current_time = 0;        // 타이머 초기화
-                // TODO: 온도차 판단 함수 호출
+          isStart = true; 
+          message_index = 1;
+        } else if (word == '2'){ // 시스템 전체 종료
+            isStart = false;
+            message_index = 2;
+        } else if (word == '3'){ // 창문 상태 조회
+            message_index = 3;
+        } else if (word == '4'){ // 연기 상태 조회
+            message_index = 4;
+        } else if (word == '5'){ // 수동 환기 시작
+            if (isOpen == false){  // 닫혀있을때
+                isOpen = true;
+                resetTimer();
+                message_index = 5;
+                // TODO: 서보모터, DC 모터 작동 함수 호출
+                startMotor();
             }
-        }
-        else if (word == 'e'){ // 수동 환기(창문 개방) 멈춤
-            if (isOpen == 1){ // 열려있을때
-                isOpen = 0;
-                timer_status = NO_TIMER; // 타이머 초기화
-                current_time = 0;        // 타이머 초기화
+        } else if (word == '6'){ // 수동 환기 멈춤 
+            if (isOpen == true){  // 열려있을때
+                isOpen = false;
+                resetTimer();
+                message_index = 6;
                 // TODO: 서보모터, DC 모터 중지 함수 호출
+                stopMotor();
             }
         }
         // clear 'Read data register not empty' flag
     	USART_ClearITPendingBit(USART2,USART_IT_RXNE);
     }
-    //USART_ClearITPendingBit(USART2,USART_IT_RXNE); // Q. 이건 왜한거죠? 실험 때 복붙하다가 잘못 넣었나봐여 
+}
+
+void sendDataUART2(uint16_t data) {
+   /* Wait till TC is set */
+   while ((USART2->SR & USART_SR_TC) == 0);
+   USART_SendData(USART2, data);
 }
 
 void EXTI4_IRQHandler(void){
     if(EXTI_GetITStatus(EXTI_Line4) != RESET) { // KEY1
-      
         if(GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_4) == Bit_RESET) {
             //모터가 켜져있는 상태에서는 꺼지고 꺼져있는 상태에서는 꺼짐
-          if(isSpin == 1){
-            isSpin = 0;
-        } else isSpin = 1;
+          if(isSpin == true){
+            GPIO_ResetBits(GPIOD, GPIO_Pin_13 | GPIO_Pin_15);   // Motor Off
+            isSpin = false;
+        } else {
+            GPIO_SetBits(GPIOD, GPIO_Pin_13 | GPIO_Pin_15);   // Motor On
+            isSpin = true;
+            }
         }
         EXTI_ClearITPendingBit(EXTI_Line4);
     }
 }
 
-void ADC1_2_IRQHandler(void) {
-// 디버깅으로 할 때는 정상적으로 동작하는데 
-  //디버깅 없이 할 때는 LCD가 동작하지 않음
-  //대체 뭐가 문제임
-  if(ADC_GetITStatus(ADC1,ADC_IT_EOC) != RESET) { // ?�� ???? ??
-	  
-    value = (int)ADC_GetConversionValue(ADC1); // ADC1?? ???? ???? value?? ???
-    temp_value = (float)(3300 * value / 4096) / 10.0; // temperature...
+void ADC1_2_IRQHandler(void) {  // 아날로그 센서값을 받아옴 @wlqrkrhtlvek
+
+  // ADC_1 value(PC2) - 연기 센서
+  if(ADC_GetITStatus(ADC1,ADC_IT_EOC) != RESET) {
+    analogData_1 = ADC_GetConversionValue(ADC1);
+    if (analogData_1 <= SMOKE_FLAG){ // 연기 상태 나쁠 때
+        startVen();
+    }
   }
   ADC_ClearITPendingBit(ADC1, ADC_IT_EOC);
-  
+
+  // ADC_2 value(PC3) - 조도 센서
+  if(ADC_GetITStatus(ADC2,ADC_IT_EOC) != RESET) {
+    analogData_2 = ADC_GetConversionValue(ADC2);
+    if (analogData_2 >= LIGHT_FLAG){ // 밝을 때
+        startMotor();
+    }
+  }
+  ADC_ClearITPendingBit(ADC2, ADC_IT_EOC);
+
 }
 
 void TIM2_IRQHandler() { // 1초에 한번씩 수행
@@ -341,22 +386,53 @@ void TIM2_IRQHandler() { // 1초에 한번씩 수행
         if (timer_status != NO_TIMER){
             current_time++;
         }
-		if (timer_status == ONE_MINUTES_30_SEC){ // 1분 30초 경과시 timeout
-            if (current_time >= ONE_MINUTES_30_SEC){
+		if (timer_status == TWENTY_SEC){
+            if (current_time >= TWENTY_SEC){ // 20초 경과시 timeout
                 timer_status = NO_TIMER;
                 current_time = 0;
-                isOpen = 0;
-            }
-        }
-        else if (timer_status = THREE_MINUTES){ // 3분 경과시 timeout
-            if (current_time >= THREE_MINUTES){
-                timer_status = NO_TIMER;
-                current_time = 0;
-                isOpen = 0;
-            }
+                isLed = false;
+                // TODO : 모터 멈춤 함수 호출
+                stopMotor();
+            } 
         }
 		TIM_ClearITPendingBit(TIM2, TIM_IT_Update);
 	}
+}
+
+// TODO : 연기 감지하면 호출
+void startVen(){ // 환기 시작
+    // TODO : 모터 작동 함수 호출
+    startMotor();
+    // TODO : LED 빨간불 켜기 함수 호출
+    LED_On();    
+}
+
+void startMotor(){ // 모터 작동
+    timer_status = TWENTY_SEC;
+    current_time = 0;
+}
+
+void stopMotor(){ // 모터 중지
+    if (isLed == true){
+        LED_Off();
+    }
+}
+
+void stopVen(){ // 환기 멈춤
+    
+}
+
+void LED_On(){ // LED 켬
+    isLed = true;
+}
+
+void LED_Off(){ // LED 끔
+    isLed = false;
+}
+
+void resetTimer(){
+    timer_status = NO_TIMER; // 타이머 초기화
+    current_time = 0;        // 타이머 초기화   
 }
 
 /*-------------main---------------*/
@@ -374,32 +450,77 @@ void TIM2_IRQHandler() { // 1초에 한번씩 수행
     GPIO_SetBits(GPIOD,GPIO_Pin_2); 
     GPIO_SetBits(GPIOD,GPIO_Pin_3); 
     GPIO_SetBits(GPIOD,GPIO_Pin_7); 
-    // --------------LCD Part----------------
+    // --------    
     LCD_Init();
-    Touch_Configuration();
-    //Touch_Adjust();
-    LCD_Clear(WHITE);
 
-    LCD_ShowString(80,80,"THUR_Team01",BLACK,WHITE); // ?? ??? ???
+    while(true){
+        LCD_Clear(WHITE);
+        LCD_ShowString(20, 40,  "1 : START SYSTEM", BLACK, WHITE);
+        LCD_ShowString(20, 60,  "2 : STOP SYSTEM", BLACK, WHITE);
+        LCD_ShowString(20, 80,  "3 : SHOW WINDOW STATUS", BLACK, WHITE);
+        LCD_ShowString(20, 100, "4 : SHOW SMOKE VALUE", BLACK, WHITE);
+        LCD_ShowString(20, 120, "5 : OPEN WINDOW", BLACK, WHITE);
+        LCD_ShowString(20, 140, "6 : CLOSE WINDOW", BLACK, WHITE);
+        while (isStart == false){}
+        while (isStart == true) {
+          LCD_ShowString(80, 200, "start", BLACK, WHITE);
+          if (message_index == 1){
+            for(int i = 0; msg1[i] != '\0'; i++){
+                    sendDataUART2(msg1[i]);
+            }
+          } else if (message_index == 2){
+            for(int i = 0; msg2[i] != '\0'; i++){
+                    sendDataUART2(msg2[i]);
+            }
+            break;
+          } else if (message_index == 3){
+            if (isOpen == true){
+                for(int i = 0; msg3_open[i] != '\0'; i++){
+                    sendDataUART2(msg3_open[i]);
+                }
+            }
+            if (isOpen == false){
+                for(int i = 0; msg3_close[i] != '\0'; i++){
+                    sendDataUART2(msg3_close[i]);
+                }
+            }
+          } else if (message_index == 4){
+            if ((int)analogData_1 <= SMOKE_FLAG){ // 연기 농도 나쁠 때
+                for(int i = 0; msg4_smoke_bad[i] != '\0'; i++){
+                    sendDataUART2(msg4_smoke_bad[i]);
+                }
+            }
+            else{ // 연기 농도 괜찮을 때
+                for(int i = 0; msg4_smoke_good[i] != '\0'; i++){
+                    sendDataUART2(msg4_smoke_good[i]);
+                }
+            }
+          } else if (message_index == 5){
+            for(int i = 0; msg5[i] != '\0'; i++){
+                    sendDataUART2(msg5[i]);
+            }
+          } else if (message_index == 6){
+            for(int i = 0; msg6[i] != '\0'; i++){
+                    sendDataUART2(msg6[i]);
+            }
+          }
+        message_index = 0;
 
-    while(isstart != 1){
-    }
-    
-    while (1) {
-      //Touch_GetXY(&x, &y, 1); // ext?? 1?? ??????��? "??????" ????? 1???? ?????? ???
-      //Convert_Pos(x, y, &x, &y); // ??? ???	
-      
-      if(isSpin == 1){ // on -> off
-        //GPIO_ResetBits(GPIOD,GPIO_Pin_2);   // LED1 Off
-        LCD_ShowString(80, 100, "   ", BLACK, WHITE);
-        LCD_ShowString(80, 100, "ON", BLACK, WHITE);
-      } else{     // off -> on
-        //GPIO_SetBits(GPIOD,GPIO_Pin_2); // LED1 On
-        LCD_ShowString(80, 100, "   ", BLACK, WHITE);
-        LCD_ShowString(80, 100, "OFF", BLACK, WHITE);
-      }
-      LCD_ShowNum(120,200, current_time, 2, BLACK, WHITE);
-      LCD_ShowNum(80, 120, (int)temp_value, 4, BLACK, WHITE); // (80, 120) ????? ???? ???? ?? ???
+        if(isSpin == true){ // on -> off
+            //GPIO_ResetBits(GPIOD,GPIO_Pin_2);   // LED1 Off
+            LCD_ShowString(80, 240, " ON", BLACK, WHITE);
+        } else {     // off -> on
+            //GPIO_SetBits(GPIOD,GPIO_Pin_2); // LED1 On
+            LCD_ShowString(80, 240, "OFF", BLACK, WHITE);
+        }
+            LCD_ShowNum(120,200, current_time, 2, BLACK, WHITE);
+
+            LCD_ShowString(20, 0, "YEON1 : ", BLACK, WHITE);
+            LCD_ShowString(20, 20, "JODO2 : ", BLACK, WHITE);
+            
+            LCD_ShowNum(80, 260, analogData_1, 4, BLACK, WHITE);
+            LCD_ShowNum(80, 280, analogData_2, 4, BLACK, WHITE);
+        }
     }
     return 0;
 }
